@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"runtime"
 	"time"
 
 	"github.com/zxfonline/golog"
@@ -25,10 +26,13 @@ var (
 type RedisConn redis.Conn
 
 // NewRedisNode 创建一个节点
-func NewRedisNode(addr string, pwd string, dbindex int32) *RedisNode {
+func NewRedisNode(addr string, pwd string, dbindex int32, dbIdle int) *RedisNode {
+	if dbIdle <= 0 {
+		dbIdle = runtime.NumCPU()
+	}
 	return &RedisNode{
 		pool: &redis.Pool{
-			MaxIdle:     3,
+			MaxIdle:     dbIdle,
 			IdleTimeout: 240 * time.Second,
 			Dial: func() (redis.Conn, error) {
 				r, err := redis.Dial("tcp", addr)
