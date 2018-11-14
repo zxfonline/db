@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/zxfonline/golog"
+	"github.com/zxfonline/strutil"
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/golang/protobuf/proto"
@@ -71,12 +72,12 @@ func (node *RedisNode) GetRedis() RedisConn {
 }
 
 // Put 放回去
-func (node *RedisNode) Put(conn RedisConn) {
-	conn.Close()
+func (node *RedisNode) Put(con RedisConn) {
+	con.Close()
 }
 
-func GetHashRedis(conn RedisConn, hkey string, key string, valuePtr interface{}) (error, bool) {
-	ret, err := conn.Do("hget", hkey, key)
+func GetHashRedis(con RedisConn, hkey string, key string, valuePtr interface{}) (error, bool) {
+	ret, err := con.Do("hget", hkey, key)
 	if err != nil {
 		return err, false
 	}
@@ -126,4 +127,52 @@ func GetHashRedis(conn RedisConn, hkey string, key string, valuePtr interface{})
 	}
 	//数据库中没有该值，返回nil，而不是错误
 	return nil, false
+}
+
+func Get(con RedisConn, key string) int64 {
+	reply, err := con.Do("get", key)
+	if err != nil {
+		logger.Warnf("db get err,key:%s,err:%v.", key, err)
+		return 0
+	}
+	return strutil.M2int64(reply)
+}
+
+func Set(con RedisConn, key string, value interface{}, expire uint32) (interface{}, error) {
+	if expire > 0 {
+		reply, err := con.Do("SETEX", key, expire, value)
+		if err != nil {
+			logger.Warnf("db SETEX %s %d %d err %v", key, expire, value, err)
+		}
+		return reply, err
+	}
+
+	reply, err := con.Do("SET", key, value)
+	if err != nil {
+		logger.Warnf("db SET %s %d err %v", key, value, err)
+	}
+	return reply, err
+}
+
+func Incr(con RedisConn, key string, value int64, expire uint32) (int64, error) {
+	ret, err := redis.Int64(con.Do("incrby", key, value))
+	if err == nil {
+		if expire > 0 {
+			_, err = con.Do("expire", key, expire)
+		}
+	}
+	if err != nil {
+		logger.Warnf("db incrby err,key:%s,value:%d,expire:%d.", key, value, expire)
+	}
+	return ret, err
+}
+
+//过期时间获取 -2:如果key不存在或者已过期;-1:如果key存在并且没有设置过期时间（永久有效）
+func Ttl(con RedisConn, key string) int64 {
+	t, err := redis.Int64(con.Do("TTL", key))
+	if err != nil {
+		logger.Warnf("db ttl err,key:%s.", key)
+		return 0
+	}
+	return t
 }
